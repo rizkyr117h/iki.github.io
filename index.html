@@ -392,7 +392,7 @@ function setupAnalyser() {
     const src = ctx.createMediaElementSource(audio);
     analyser = ctx.createAnalyser();
     analyser.fftSize = 256;
-    analyser.smoothingTimeConstant = 0.85;
+    analyser.smoothingTimeConstant = 0.7;
     freq = new Uint8Array(analyser.frequencyBinCount);
     src.connect(analyser); analyser.connect(ctx.destination);
   } catch (e) { analyser = null; }
@@ -577,57 +577,174 @@ let W, H, DPR = Math.min(2, window.devicePixelRatio || 1);
 function resize() { W = cv.width = innerWidth * DPR; H = cv.height = innerHeight * DPR; cv.style.width = innerWidth + 'px'; cv.style.height = innerHeight + 'px'; }
 resize(); addEventListener('resize', resize);
 
-const P = Array.from({ length: 110 }, () => ({
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const P = Array.from({ length: RM ? 60 : 220 }, () => ({
   x: Math.random(), y: Math.random(), r: Math.random() * 1.8 + .3,
-  s: Math.random() * .0006 + .0002, a: Math.random() * Math.PI * 2, gold: Math.random() < .35
+  s: Math.random() * .0006 + .0002, a: Math.random() * Math.PI * 2, gold: Math.random() < .4
 }));
 let mx = .5, my = .5;
 addEventListener('pointermove', e => { mx = e.clientX / innerWidth; my = e.clientY / innerHeight; });
 const eqBars = document.querySelectorAll('#eq i');
 
+// efek yang muncul saat beat
+const sparks = [], waves = [], bolts = [];
+let fluxAvg = .02, lastBeat = 0, beatFlash = 0, gridOff = 0, prevLow = null;
+function spawnBeat(cx, cy, power) {
+  const u = Math.min(W, H);
+  waves.push({ x: cx, y: cy, r: u * .12, v: u * (.012 + power * .02), life: 1 });
+  const n = Math.round(20 + power * 50);
+  for (let i = 0; i < n && sparks.length < 500; i++) {
+    const a = Math.random() * Math.PI * 2, sp = (2 + Math.random() * 9 * (.5 + power)) * DPR;
+    sparks.push({ x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 1, d: .012 + Math.random() * .02, hot: Math.random() < .3 });
+  }
+  if (power > .55 && bolts.length < 3) bolts.push(makeBolt(cx, cy));
+  beatFlash = Math.min(1, .35 + power * .5);
+}
+function makeBolt(cx, cy) {
+  const a = Math.random() * Math.PI * 2, len = Math.max(W, H) * (.45 + Math.random() * .3);
+  const pts = [[cx, cy]], seg = 14;
+  for (let i = 1; i <= seg; i++) {
+    const k = i / seg, j = (1 - k * .6) * 40 * DPR;
+    pts.push([cx + Math.cos(a) * len * k + (Math.random() - .5) * j, cy + Math.sin(a) * len * k + (Math.random() - .5) * j]);
+  }
+  return { pts, life: 1 };
+}
+function strokePath(pts, color, w) {
+  g.beginPath(); pts.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y));
+  g.strokeStyle = color; g.lineWidth = w; g.stroke();
+}
+
 function loop(t) {
   themeStep();
-  let bass = 0, mid = 0;
-  if (analyser && !audio.paused) {
+  let bass = 0, mid = 0, high = 0;
+  const live = analyser && !audio.paused;
+  if (live) {
     analyser.getByteFrequencyData(freq);
     for (let i = 0; i < 8; i++) bass += freq[i]; bass /= 8 * 255;
     for (let i = 8; i < 48; i++) mid += freq[i]; mid /= 40 * 255;
+    for (let i = 48; i < 100; i++) high += freq[i]; high /= 52 * 255;
     eqBars.forEach((b, i) => b.style.height = (3 + freq[i * 6] / 255 * 15) + 'px');
   } else eqBars.forEach(b => b.style.height = '3px');
 
-  g.fillStyle = 'rgba(5,5,5,0.22)'; g.fillRect(0, 0, W, H);
+  const cx = W * (.5 + (mx - .5) * .08), cy = H * (.42 + (my - .5) * .08);
+  const u = Math.min(W, H);
+
+  // deteksi beat (spectral flux): energi frekuensi rendah naik tajam dibanding frame sebelumnya
+  let flux = 0;
+  if (live) {
+    if (!prevLow) prevLow = new Float32Array(16);
+    for (let i = 0; i < 16; i++) { flux += Math.max(0, freq[i] - prevLow[i]); prevLow[i] = freq[i]; }
+    flux /= 16 * 255;
+    fluxAvg += (flux - fluxAvg) * .04;
+  }
+  if (live && !RM && flux > fluxAvg * 1.8 + .012 && t - lastBeat > 220) {
+    lastBeat = t; spawnBeat(cx, cy, Math.min(1, .35 + (flux - fluxAvg) * 8 + bass * .3));
+  } else if (!live && !RM && t - lastBeat > 2600) {        // mode diam: denyut pelan
+    lastBeat = t; spawnBeat(cx, cy, .2);
+  }
+
+  g.globalCompositeOperation = 'source-over';
+  g.fillStyle = 'rgba(5,5,5,0.24)'; g.fillRect(0, 0, W, H);
+  g.globalCompositeOperation = 'lighter';
+
+  // lantai grid perspektif (ala synthwave) yang melaju ikut bass
+  gridOff = (gridOff + .004 + bass * .02) % 1;
+  const hz = H * .62;
+  g.lineWidth = 1 * DPR;
+  for (let i = 0; i < 14; i++) {
+    const z = (i + gridOff) / 14, y = hz + (H - hz) * z * z;
+    g.strokeStyle = `rgba(${AC},${(.03 + bass * .12) * z})`;
+    g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke();
+  }
+  for (let i = -12; i <= 12; i++) {
+    g.strokeStyle = `rgba(${AC},${.035 + bass * .08})`;
+    g.beginPath(); g.moveTo(W / 2 + i * W * .012, hz); g.lineTo(W / 2 + i * W * .16, H); g.stroke();
+  }
+
+  // sinar cahaya berputar dari pusat
+  const beams = 14;
+  for (let i = 0; i < beams; i++) {
+    const a = i / beams * Math.PI * 2 + t * .00012, w = .05 + mid * .05, L = u * 1.4;
+    g.fillStyle = `rgba(${AC},${.012 + mid * .06 + beatFlash * .04})`;
+    g.beginPath(); g.moveTo(cx, cy);
+    g.lineTo(cx + Math.cos(a - w) * L, cy + Math.sin(a - w) * L);
+    g.lineTo(cx + Math.cos(a + w) * L, cy + Math.sin(a + w) * L); g.fill();
+  }
 
   // aura glow yang berdenyut ikut bass
-  const cx = W * (.5 + (mx - .5) * .08), cy = H * (.42 + (my - .5) * .08);
-  const R = Math.min(W, H) * (.32 + bass * .35);
+  const R = u * (.32 + bass * .35 + beatFlash * .08);
   const grd = g.createRadialGradient(cx, cy, 0, cx, cy, R);
-  grd.addColorStop(0, `rgba(${AC},${.05 + bass * .22})`);
-  grd.addColorStop(.5, `rgba(${AC2},${.03 + bass * .12})`);
+  grd.addColorStop(0, `rgba(${AC},${.05 + bass * .2})`);
+  grd.addColorStop(.5, `rgba(${AC2},${.04 + bass * .14})`);
   grd.addColorStop(1, 'rgba(0,0,0,0)');
   g.fillStyle = grd; g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.fill();
 
-  // cincin gelombang
-  if (analyser && !audio.paused) {
+  // spektrum radial: batang frekuensi mengelilingi pusat
+  if (live) {
+    const n = 120, base = u * .24, rot = t * .00015;
+    g.lineWidth = 2 * DPR; g.lineCap = 'round';
+    for (let i = 0; i < n; i++) {
+      const k = i < n / 2 ? i : n - i;                     // simetris kiri-kanan
+      const v = freq[2 + Math.floor(k / (n / 2) * 70)] / 255;
+      const a = i / n * Math.PI * 2 + rot, l = v * v * base * .9;
+      g.strokeStyle = `rgba(${i % 2 ? AC : AC2},${.25 + v * .6})`;
+      g.beginPath();
+      g.moveTo(cx + Math.cos(a) * base, cy + Math.sin(a) * base);
+      g.lineTo(cx + Math.cos(a) * (base + l), cy + Math.sin(a) * (base + l)); g.stroke();
+    }
+    // cincin gelombang dalam
     g.beginPath();
-    const n = 64, base = Math.min(W, H) * .2;
-    for (let i = 0; i <= n; i++) {
-      const ang = i / n * Math.PI * 2 + t * .0002;
-      const v = freq[i % 48] / 255;
-      const rr = base + v * base * .5;
+    const m = 64, b2 = u * .19;
+    for (let i = 0; i <= m; i++) {
+      const ang = i / m * Math.PI * 2 - t * .0003, rr = b2 + freq[i % 48] / 255 * b2 * .35;
       const x = cx + Math.cos(ang) * rr, y = cy + Math.sin(ang) * rr;
       i ? g.lineTo(x, y) : g.moveTo(x, y);
     }
-    g.strokeStyle = `rgba(${AC},${.15 + mid * .5})`; g.lineWidth = 1.2 * DPR; g.stroke();
+    g.strokeStyle = `rgba(${AC},${.2 + mid * .5})`; g.lineWidth = 1.2 * DPR; g.stroke();
+  }
+
+  // gelombang kejut
+  for (let i = waves.length - 1; i >= 0; i--) {
+    const w = waves[i]; w.r += w.v; w.life -= .022;
+    if (w.life <= 0) { waves.splice(i, 1); continue; }
+    g.strokeStyle = `rgba(${AC},${w.life * .55})`; g.lineWidth = (1 + w.life * 5) * DPR;
+    g.beginPath(); g.arc(w.x, w.y, w.r, 0, Math.PI * 2); g.stroke();
+  }
+
+  // petir
+  for (let i = bolts.length - 1; i >= 0; i--) {
+    const b = bolts[i]; b.life -= .09;
+    if (b.life <= 0) { bolts.splice(i, 1); continue; }
+    if (Math.random() < .4) b.pts.forEach((p, j) => { if (j) { p[0] += (Math.random() - .5) * 6 * DPR; p[1] += (Math.random() - .5) * 6 * DPR; } });
+    strokePath(b.pts, `rgba(${AC},${b.life * .35})`, 8 * DPR);
+    strokePath(b.pts, `rgba(255,255,255,${b.life * .9})`, 1.6 * DPR);
+  }
+
+  // percikan api dari beat
+  for (let i = sparks.length - 1; i >= 0; i--) {
+    const sp = sparks[i];
+    sp.x += sp.vx; sp.y += sp.vy; sp.vx *= .965; sp.vy = sp.vy * .965 + .04 * DPR; sp.life -= sp.d;
+    if (sp.life <= 0) { sparks.splice(i, 1); continue; }
+    g.strokeStyle = sp.hot ? `rgba(255,255,255,${sp.life})` : `rgba(${AC},${sp.life})`;
+    g.lineWidth = (sp.hot ? 1.2 : 1.8) * DPR;
+    g.beginPath(); g.moveTo(sp.x, sp.y); g.lineTo(sp.x - sp.vx * 2.5, sp.y - sp.vy * 2.5); g.stroke();
   }
 
   // partikel debu naik
   P.forEach(p => {
-    p.y -= p.s * (1 + bass * 6); p.a += .01;
+    p.y -= p.s * (1 + bass * 8); p.a += .01;
     if (p.y < -.02) { p.y = 1.02; p.x = Math.random(); }
     const x = (p.x + Math.sin(p.a) * .004) * W, y = p.y * H;
-    g.fillStyle = p.gold ? `rgba(${AC},${.5 + bass * .5})` : `rgba(255,255,255,${.25 + mid * .4})`;
+    g.fillStyle = p.gold ? `rgba(${AC},${.45 + bass * .5})` : `rgba(255,255,255,${.2 + high * .8})`;
     g.beginPath(); g.arc(x, y, p.r * DPR * (1 + bass), 0, Math.PI * 2); g.fill();
   });
+
+  // kilatan layar saat beat
+  if (beatFlash > .01) {
+    g.fillStyle = `rgba(${AC},${beatFlash * .06})`; g.fillRect(0, 0, W, H);
+    beatFlash *= .88;
+  }
+  g.globalCompositeOperation = 'source-over';
 
   // shake halus di nama saat beat
   const nm = document.querySelector('h1.name');
