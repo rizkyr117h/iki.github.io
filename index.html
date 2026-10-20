@@ -12,8 +12,13 @@
     --fg: #f2f2f2;
     --dim: #7a7a7a;
     --line: #1c1c1c;
-    --aura: #c9a24b;      /* emas */
-    --aura2: #8b0000;     /* merah gelap */
+    /* warna tema (diganti otomatis oleh JS sesuai lagu yang diputar) */
+    --aura-rgb: 201,162,75;     /* warna utama */
+    --aura2-rgb: 139,0,0;       /* warna gelap pendamping */
+    --light-rgb: 245,210,122;   /* warna terang (retakan, tebasan) */
+    --tint: 0;                  /* seberapa kuat foto aura diwarnai ulang */
+    --aura: rgb(var(--aura-rgb));
+    --aura2: rgb(var(--aura2-rgb));
     /* kursor pedang (titik klik di ujung pedang, kiri atas) */
     --sword: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='s' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23ffffff'/%3E%3Cstop offset='1' stop-color='%238c95a1'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cg%3E%3Cpolygon points='1.5,1.5 6,3 21,18 18,21 3,6' fill='url%28%23s%29' stroke='%23000' stroke-width='1' stroke-linejoin='round'/%3E%3Cline x1='4.5' y1='4.5' x2='18' y2='18' stroke='%23fff' stroke-opacity='.75' stroke-width='.8'/%3E%3Cline x1='15' y1='25' x2='25' y2='15' stroke='%23000' stroke-width='4.6' stroke-linecap='round'/%3E%3Cline x1='15' y1='25' x2='25' y2='15' stroke='%23c9a24b' stroke-width='2.6' stroke-linecap='round'/%3E%3Cline x1='20.5' y1='20.5' x2='27' y2='27' stroke='%23000' stroke-width='4.2' stroke-linecap='round'/%3E%3Cline x1='20.5' y1='20.5' x2='27' y2='27' stroke='%235a2a14' stroke-width='2.2' stroke-linecap='round'/%3E%3Ccircle cx='28.3' cy='28.3' r='2.4' fill='%23c9a24b' stroke='%23000' stroke-width='1'/%3E%3C/g%3E%3C/svg%3E") 2 2, auto;
     --sword-hover: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='s' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23fff3c4'/%3E%3Cstop offset='1' stop-color='%23c9a24b'/%3E%3C/linearGradient%3E%3Cfilter id='g' x='-50%25' y='-50%25' width='200%25' height='200%25'%3E%3CfeGaussianBlur stdDeviation='1.2' result='b'/%3E%3CfeMerge%3E%3CfeMergeNode in='b'/%3E%3CfeMergeNode in='SourceGraphic'/%3E%3C/feMerge%3E%3C/filter%3E%3C/defs%3E%3Cg filter='url%28%23g%29'%3E%3Cpolygon points='1.5,1.5 6,3 21,18 18,21 3,6' fill='url%28%23s%29' stroke='%23000' stroke-width='1' stroke-linejoin='round'/%3E%3Cline x1='4.5' y1='4.5' x2='18' y2='18' stroke='%23fff' stroke-opacity='.75' stroke-width='.8'/%3E%3Cline x1='15' y1='25' x2='25' y2='15' stroke='%23000' stroke-width='4.6' stroke-linecap='round'/%3E%3Cline x1='15' y1='25' x2='25' y2='15' stroke='%23c9a24b' stroke-width='2.6' stroke-linecap='round'/%3E%3Cline x1='20.5' y1='20.5' x2='27' y2='27' stroke='%23000' stroke-width='4.2' stroke-linecap='round'/%3E%3Cline x1='20.5' y1='20.5' x2='27' y2='27' stroke='%235a2a14' stroke-width='2.2' stroke-linecap='round'/%3E%3Ccircle cx='28.3' cy='28.3' r='2.4' fill='%23c9a24b' stroke='%23000' stroke-width='1'/%3E%3C/g%3E%3C/svg%3E") 2 2, pointer;
@@ -59,7 +64,7 @@
   a, button, input[type=range] { cursor: var(--sword-hover); }
   /* efek tebasan saat klik */
   .slash { position: fixed; z-index: 100; width: 90px; height: 90px; margin: -45px 0 0 -45px; pointer-events: none;
-    border-radius: 50%; border-top: 3px solid #fff3c4; border-right: 2px solid var(--aura);
+    border-radius: 50%; border-top: 3px solid rgb(var(--light-rgb)); border-right: 2px solid var(--aura);
     filter: drop-shadow(0 0 6px var(--aura)); animation: slash .35s ease-out forwards; }
   @keyframes slash { from { opacity: 1; transform: rotate(-60deg) scale(.4); } to { opacity: 0; transform: rotate(40deg) scale(1.1); } }
 
@@ -70,12 +75,12 @@
   .topbar .date { font-size: 12px; letter-spacing: .25em; color: var(--dim); text-transform: uppercase; }
   .topbar .date b { color: var(--fg); font-weight: 700; }
   .clock { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: clamp(26px, 4vw, 38px); letter-spacing: .08em; line-height: 1;
-    color: var(--aura); text-shadow: 0 0 12px rgba(201,162,75,.8), 0 0 28px rgba(201,162,75,.35); font-variant-numeric: tabular-nums; }
+    color: var(--aura); text-shadow: 0 0 12px rgba(var(--aura-rgb),.8), 0 0 28px rgba(var(--aura-rgb),.35); font-variant-numeric: tabular-nums; }
   .clock .sep { animation: blink 1s steps(1) infinite; }
   .clock small { font-size: .45em; color: var(--fg); margin-left: 6px; text-shadow: none; letter-spacing: .1em; }
   .lockin { justify-self: end; text-align: right; font-size: 12px; letter-spacing: .25em; text-transform: uppercase; color: var(--fg); }
-  .lockin em { font-style: normal; color: var(--aura2); text-shadow: 0 0 10px rgba(139,0,0,.9); }
-  .lockin b { color: var(--aura); text-shadow: 0 0 10px rgba(201,162,75,.6); }
+  .lockin em { font-style: normal; color: #ff3b3b; text-shadow: 0 0 10px rgba(255,59,59,.7); }
+  .lockin b { color: var(--aura); text-shadow: 0 0 10px rgba(var(--aura-rgb),.6); }
   .lockin .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #e02424; margin-right: 8px; vertical-align: 1px;
     box-shadow: 0 0 8px #e02424; animation: blink 1.2s infinite; }
   @media (max-width: 760px) {
@@ -96,13 +101,13 @@
   .avatar { position: relative; width: 100%; height: 100%; border-radius: 50%; background: #0b0b0b;
     display: grid; place-items: center; overflow: hidden; border: 1px solid #222;
     font-family: Anton, sans-serif; font-size: 72px; color: var(--fg); }
-  .avatar { background: radial-gradient(circle at 50% 35%, #2a2210, #0b0b0b 70%); }
+  .avatar { background: radial-gradient(circle at 50% 35%, rgba(var(--aura-rgb),.18), #0b0b0b 70%); }
   .avatar img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 15%; transform: scale(1.35); transform-origin: 45% 20%; filter: grayscale(1) contrast(1.2); }
   .tag { font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: .5em; color: var(--aura); margin-bottom: 14px; }
   h1.name {
     font-family: Anton, sans-serif; font-weight: 400; text-transform: uppercase;
     font-size: clamp(52px, 13vw, 170px); line-height: .9; letter-spacing: .02em; position: relative;
-    text-shadow: 0 0 40px rgba(201,162,75,.25);
+    text-shadow: 0 0 40px rgba(var(--aura-rgb),.25);
   }
   .glitch::before, .glitch::after { content: attr(data-text); position: absolute; inset: 0; overflow: hidden; }
   .glitch::before { color: var(--aura2); transform: translate(-3px,0); clip-path: inset(0 0 60% 0); animation: g1 3.5s infinite steps(1); mix-blend-mode: screen; }
@@ -119,9 +124,9 @@
   #transform { position: relative; height: 420vh; }
   .stage { position: sticky; top: 0; height: 100svh; display: grid; place-items: center; overflow: hidden; }
   .stage-bg { position: absolute; inset: 0; opacity: var(--charge, 0);
-    background: radial-gradient(circle at 50% 50%, rgba(201,162,75,.35), rgba(139,0,0,.12) 40%, transparent 70%); }
+    background: radial-gradient(circle at 50% 50%, rgba(var(--aura-rgb),.35), rgba(var(--aura2-rgb),.12) 40%, transparent 70%); }
   .rays { position: absolute; width: 180vmax; height: 180vmax; left: 50%; top: 50%; translate: -50% -50%;
-    background: repeating-conic-gradient(from 0deg, rgba(201,162,75,.16) 0 4deg, transparent 4deg 14deg);
+    background: repeating-conic-gradient(from 0deg, rgba(var(--aura-rgb),.16) 0 4deg, transparent 4deg 14deg);
     -webkit-mask: radial-gradient(circle, #000 0, transparent 60%); mask: radial-gradient(circle, #000 0, transparent 60%);
     opacity: var(--rays, 0); animation: spin 40s linear infinite; }
   .frame-wrap { position: relative; width: min(86vw, 68svh); aspect-ratio: 1056 / 992;
@@ -130,16 +135,16 @@
     background: conic-gradient(from var(--rot, 0deg), var(--aura), transparent 25%, var(--aura2), transparent 60%, var(--aura));
     filter: blur(calc(10px + var(--bass, 0) * 20px)); }
   .frame { position: absolute; inset: 0; overflow: hidden; border: 1px solid #2a2a2a;
-    background: radial-gradient(circle at 50% 38%, rgba(201,162,75, calc(.06 + var(--charge, 0) * .55)), rgba(139,0,0, calc(var(--charge, 0) * .25)) 45%, #070707 75%);
-    box-shadow: 0 0 calc(var(--charge, 0) * 120px + var(--bass, 0) * 80px) rgba(201,162,75, calc(var(--charge, 0) * .7)); }
+    background: radial-gradient(circle at 50% 38%, rgba(var(--aura-rgb), calc(.06 + var(--charge, 0) * .55)), rgba(var(--aura2-rgb), calc(var(--charge, 0) * .25)) 45%, #070707 75%);
+    box-shadow: 0 0 calc(var(--charge, 0) * 120px + var(--bass, 0) * 80px) rgba(var(--aura-rgb), calc(var(--charge, 0) * .7)); }
   .frame img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 30%; }
   #imgBefore { transform: scale(1.1); transform-origin: 30% 30%; /* potong watermark pojok kanan bawah */
     filter: grayscale(var(--gray, 0)) brightness(var(--bright, 1)) contrast(var(--contrast, 1))
-      drop-shadow(0 0 calc(var(--charge, 0) * 22px + var(--bass, 0) * 12px) rgba(245,210,122, var(--charge, 0))); }
+      drop-shadow(0 0 calc(var(--charge, 0) * 22px + var(--bass, 0) * 12px) rgba(var(--light-rgb), var(--charge, 0))); }
   #imgAfter { clip-path: circle(var(--reveal, 0%) at 50% 32%); transform: scale(var(--afterZoom, 1.15));
     filter: brightness(calc(1 + var(--bass, 0) * .25)); }
   .flash { position: absolute; inset: 0; background: #fff8e1; opacity: var(--flash, 0); pointer-events: none; mix-blend-mode: screen; z-index: 3; }
-  .cracks { position: absolute; inset: 0; z-index: 2; opacity: var(--cracks, 0); pointer-events: none; }
+  .cracks { stroke: rgb(var(--light-rgb)); position: absolute; inset: 0; z-index: 2; opacity: var(--cracks, 0); pointer-events: none; }
   .hud { position: absolute; left: 0; right: 0; text-align: center; font-family: 'JetBrains Mono', monospace; letter-spacing: .4em; font-size: 12px; z-index: 4; padding: 0 16px; }
   .hud.top { top: 7svh; color: var(--dim); }
   .hud.bottom { bottom: 12svh; }
@@ -148,7 +153,7 @@
   .unlock { position: absolute; left: 0; right: 0; bottom: 9svh; text-align: center; z-index: 5; opacity: var(--unlock, 0);
     transform: translateY(calc((1 - var(--unlock, 0)) * 30px)); padding: 0 16px; }
   .unlock h3 { font-family: Anton, sans-serif; font-weight: 400; font-size: clamp(34px, 8vw, 96px); line-height: 1; letter-spacing: .04em;
-    color: var(--aura); text-shadow: 0 0 30px rgba(201,162,75,.7), 0 4px 0 #000; }
+    color: var(--aura); text-shadow: 0 0 30px rgba(var(--aura-rgb),.7), 0 4px 0 #000; }
   .unlock p { font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: .5em; color: var(--fg); margin-top: 10px; }
 
   /* ===== SECTIONS ===== */
@@ -180,7 +185,7 @@
   /* rules */
   .rules { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); }
   .rule { background: var(--bg); padding: 34px 26px; transition: background .4s; }
-  .rule:hover { background: #0d0b06; }
+  .rule:hover { background: rgba(var(--aura-rgb),.05); }
   .rule .n { font-family: Anton, sans-serif; font-size: 44px; color: #222; transition: color .4s; }
   .rule:hover .n { color: var(--aura); }
   .rule h3 { font-family: Anton, sans-serif; font-weight: 400; font-size: 22px; letter-spacing: .05em; text-transform: uppercase; margin: 8px 0 10px; }
@@ -206,6 +211,17 @@
     background: rgba(8,8,8,.75); backdrop-filter: blur(12px); border: 1px solid #222; border-radius: 999px; }
   .player button { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--aura); background: none; color: var(--aura); cursor: var(--sword-hover); display: grid; place-items: center; flex-shrink: 0; }
   .player button:hover { background: var(--aura); color: #000; }
+  .player button.small { width: 30px; height: 30px; border-color: #333; color: var(--fg); }
+  .player button.small:hover { border-color: var(--aura); }
+  .player .meta b { color: var(--aura); font-weight: 700; transition: color .6s; }
+  .after-tint { position: absolute; inset: 0; pointer-events: none; background: var(--aura); mix-blend-mode: color;
+    opacity: calc(var(--tint) * min(1, var(--reveal-n, 0)));
+    -webkit-mask: radial-gradient(ellipse 20% 24% at 48% 24%, transparent 55%, #000 100%);
+    mask: radial-gradient(ellipse 20% 24% at 48% 24%, transparent 55%, #000 100%); transition: background .8s; }
+  .theme-flash { position: fixed; inset: 0; z-index: 40; pointer-events: none; opacity: 0;
+    background: radial-gradient(circle at 50% 100%, rgba(var(--aura-rgb), .55), transparent 70%); }
+  .theme-flash.go { animation: themeFlash .9s ease-out; }
+  @keyframes themeFlash { 0% { opacity: 1; } 100% { opacity: 0; } }
   .player .meta { font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .player .meta span { color: var(--dim); }
   .eq { display: flex; gap: 3px; align-items: flex-end; height: 18px; flex-shrink: 0; }
@@ -216,7 +232,8 @@
   @media (max-width: 760px) {
     .about { grid-template-columns: 1fr; }
     .rules { grid-template-columns: 1fr; }
-    .player input[type=range] { display: none; }
+    .player input[type=range], .player .eq { display: none; }
+    .player { gap: 8px; padding-right: 14px; }
   }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -264,7 +281,8 @@
         <div class="frame">
           <img id="imgBefore" src="assets/before-cutout.png" alt="Rizky — sebelum">
           <img id="imgAfter" src="assets/after.webp" alt="Rizky — aura farming">
-          <svg class="cracks" viewBox="0 0 100 100" preserveAspectRatio="none" fill="none" stroke="#f5d27a" stroke-width=".35">
+          <div class="after-tint"></div>
+          <svg class="cracks" viewBox="0 0 100 100" preserveAspectRatio="none" fill="none" stroke-width=".35">
             <path d="M50 32 L38 18 L33 4 M38 18 L22 14 L6 2"/>
             <path d="M50 32 L64 20 L70 6 M64 20 L82 16 L97 4"/>
             <path d="M50 32 L30 40 L10 38 L1 46 M30 40 L18 56"/>
@@ -336,16 +354,23 @@
 </main>
 
 <div class="player">
+  <button id="prev" class="small" aria-label="Lagu sebelumnya">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M5 4h3v16H5zM20 4L9 12l11 8z"/></svg>
+  </button>
   <button id="play" aria-label="Play / Pause">
     <svg id="icoPlay" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4l15 8-15 8z"/></svg>
     <svg id="icoPause" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="display:none"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>
   </button>
+  <button id="next" class="small" aria-label="Lagu berikutnya">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M16 4h3v16h-3zM4 4l11 8-11 8z"/></svg>
+  </button>
   <div class="eq" id="eq"><i></i><i></i><i></i><i></i><i></i></div>
-  <div class="meta">X-COOL<br><span>Instrumental · Ultra Slowed</span></div>
+  <div class="meta"><b id="trackTitle">X-COOL</b> <span id="trackNum">1/5</span><br><span id="trackSub">Instrumental · Ultra Slowed</span></div>
   <input type="range" id="vol" min="0" max="1" step="0.01" value="0.8" aria-label="Volume">
 </div>
 
-<audio id="song" src="assets/x-cool.mp3" loop preload="auto"></audio>
+<audio id="song" src="assets/x-cool.mp3" preload="auto"></audio>
+<div class="theme-flash" id="themeFlash"></div>
 
 <script>
 /* ===== DATA (ubah sesuka hati) ===== */
@@ -385,6 +410,52 @@ async function play() {
 playBtn.onclick = () => audio.paused ? play() : (audio.pause(), syncIcon());
 document.getElementById('vol').oninput = e => audio.volume = e.target.value;
 audio.volume = 0.8;
+
+/* ===== PLAYLIST + TEMA PER LAGU ===== */
+const TRACKS = [
+  { src: 'assets/x-cool.mp3', title: 'X-COOL', sub: 'Instrumental · Ultra Slowed',
+    theme: { name: 'Golden Emperor', aura: [201,162,75], aura2: [139,0,0], light: [245,210,122], tint: 0 } },
+  { src: 'assets/passo-bem-solto.mp3', title: 'PASSO BEM SOLTO', sub: 'ATLXS · Slowed',
+    theme: { name: 'Phonk Violet', aura: [180,107,255], aura2: [255,46,136], light: [225,195,255], tint: .65 } },
+  { src: 'assets/odd-future.mp3', title: 'ODD FUTURE', sub: 'UVERworld · My Hero Academia S3 OP',
+    theme: { name: 'One For All', aura: [61,255,143], aura2: [220,30,40], light: [195,255,220], tint: .6 } },
+  { src: 'assets/where-have-you-been.mp3', title: 'WHERE HAVE YOU BEEN', sub: 'TikTok Remix',
+    theme: { name: 'Frozen Blue', aura: [111,227,255], aura2: [30,58,138], light: [215,246,255], tint: .65 } },
+  { src: 'assets/montagem-alquimia.mp3', title: 'MONTAGEM ALQUIMIA', sub: 'Brazilian Phonk',
+    theme: { name: 'Infernal Red', aura: [255,77,46], aura2: [110,0,0], light: [255,195,160], tint: .55 } },
+];
+let trackIdx = 0;
+// warna canvas bergeser halus ke tema baru
+let curA = [...TRACKS[0].theme.aura], curA2 = [...TRACKS[0].theme.aura2];
+let AC = curA.join(','), AC2 = curA2.join(',');
+function themeStep() {
+  const t = TRACKS[trackIdx].theme, k = .06;
+  for (let i = 0; i < 3; i++) { curA[i] += (t.aura[i] - curA[i]) * k; curA2[i] += (t.aura2[i] - curA2[i]) * k; }
+  AC = curA.map(Math.round).join(','); AC2 = curA2.map(Math.round).join(',');
+}
+function applyTheme(t) {
+  const r = document.documentElement.style;
+  r.setProperty('--aura-rgb', t.aura.join(','));
+  r.setProperty('--aura2-rgb', t.aura2.join(','));
+  r.setProperty('--light-rgb', t.light.join(','));
+  r.setProperty('--tint', t.tint);
+  const f = document.getElementById('themeFlash');
+  f.classList.remove('go'); void f.offsetWidth; f.classList.add('go');
+}
+function loadTrack(i, autoplay = true) {
+  trackIdx = (i + TRACKS.length) % TRACKS.length;
+  const tr = TRACKS[trackIdx];
+  audio.src = tr.src;
+  document.getElementById('trackTitle').textContent = tr.title;
+  document.getElementById('trackSub').textContent = `${tr.sub} · Theme: ${tr.theme.name}`;
+  document.getElementById('trackNum').textContent = `${trackIdx + 1}/${TRACKS.length}`;
+  applyTheme(tr.theme);
+  if (autoplay) play(); else syncIcon();
+}
+document.getElementById('next').onclick = () => loadTrack(trackIdx + 1);
+document.getElementById('prev').onclick = () => audio.currentTime > 3 ? (audio.currentTime = 0) : loadTrack(trackIdx - 1);
+audio.addEventListener('ended', () => loadTrack(trackIdx + 1));
+document.getElementById('trackSub').textContent = `${TRACKS[0].sub} · Theme: ${TRACKS[0].theme.name}`;
 
 document.getElementById('enter').onclick = () => {
   document.getElementById('gate').classList.add('gone');
@@ -459,6 +530,7 @@ function updateTransform() {
   s.setProperty('--cracks', (seg(p, .36, .52) * (1 - reveal)).toFixed(3));
   s.setProperty('--flash', flash.toFixed(3));
   s.setProperty('--reveal', (reveal * 150).toFixed(1) + '%');
+  s.setProperty('--reveal-n', reveal.toFixed(3));
   s.setProperty('--afterZoom', (1.15 - after * .15).toFixed(3));
   s.setProperty('--zoom', (1 + charge * .08 - after * .08).toFixed(3));
   s.setProperty('--rays', (reveal * (.6 + after * .4)).toFixed(3));
@@ -514,6 +586,7 @@ addEventListener('pointermove', e => { mx = e.clientX / innerWidth; my = e.clien
 const eqBars = document.querySelectorAll('#eq i');
 
 function loop(t) {
+  themeStep();
   let bass = 0, mid = 0;
   if (analyser && !audio.paused) {
     analyser.getByteFrequencyData(freq);
@@ -528,8 +601,8 @@ function loop(t) {
   const cx = W * (.5 + (mx - .5) * .08), cy = H * (.42 + (my - .5) * .08);
   const R = Math.min(W, H) * (.32 + bass * .35);
   const grd = g.createRadialGradient(cx, cy, 0, cx, cy, R);
-  grd.addColorStop(0, `rgba(201,162,75,${.05 + bass * .22})`);
-  grd.addColorStop(.5, `rgba(139,0,0,${.03 + bass * .12})`);
+  grd.addColorStop(0, `rgba(${AC},${.05 + bass * .22})`);
+  grd.addColorStop(.5, `rgba(${AC2},${.03 + bass * .12})`);
   grd.addColorStop(1, 'rgba(0,0,0,0)');
   g.fillStyle = grd; g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.fill();
 
@@ -544,7 +617,7 @@ function loop(t) {
       const x = cx + Math.cos(ang) * rr, y = cy + Math.sin(ang) * rr;
       i ? g.lineTo(x, y) : g.moveTo(x, y);
     }
-    g.strokeStyle = `rgba(201,162,75,${.15 + mid * .5})`; g.lineWidth = 1.2 * DPR; g.stroke();
+    g.strokeStyle = `rgba(${AC},${.15 + mid * .5})`; g.lineWidth = 1.2 * DPR; g.stroke();
   }
 
   // partikel debu naik
@@ -552,7 +625,7 @@ function loop(t) {
     p.y -= p.s * (1 + bass * 6); p.a += .01;
     if (p.y < -.02) { p.y = 1.02; p.x = Math.random(); }
     const x = (p.x + Math.sin(p.a) * .004) * W, y = p.y * H;
-    g.fillStyle = p.gold ? `rgba(201,162,75,${.5 + bass * .5})` : `rgba(255,255,255,${.25 + mid * .4})`;
+    g.fillStyle = p.gold ? `rgba(${AC},${.5 + bass * .5})` : `rgba(255,255,255,${.25 + mid * .4})`;
     g.beginPath(); g.arc(x, y, p.r * DPR * (1 + bass), 0, Math.PI * 2); g.fill();
   });
 
