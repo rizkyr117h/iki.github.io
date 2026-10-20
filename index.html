@@ -205,6 +205,11 @@
   .links a:hover { border-color: var(--aura); color: var(--aura); transform: translateY(-3px); }
   footer { text-align: center; padding: 50px 16px 120px; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: .3em; color: #444; }
 
+  /* ===== BOSS RAID ===== */
+  .arena { position: relative; height: clamp(320px, 62vh, 580px); border: 1px solid var(--line); overflow: hidden; background: #050505; }
+  .arena canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: var(--sword-hover); touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+  .arena-cap { margin-top: 14px; font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: .15em; color: var(--dim); text-align: center; }
+
   /* ===== PLAYER ===== */
   .player { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 20;
     display: flex; align-items: center; gap: 14px; padding: 10px 18px 10px 10px; max-width: calc(100% - 32px);
@@ -233,6 +238,7 @@
     .about { grid-template-columns: 1fr; }
     .rules { grid-template-columns: 1fr; }
     .player input[type=range], .player .eq { display: none; }
+    .arena { height: 360px; }
     .player { gap: 8px; padding-right: 14px; }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -340,8 +346,16 @@
     </div>
   </section>
 
+  <section class="block" id="raid">
+    <div class="sec-head reveal"><span class="num">04</span><h2>Boss Raid</h2></div>
+    <div class="arena reveal">
+      <canvas id="duel"></canvas>
+    </div>
+    <p class="arena-cap reveal">Klik / tap arena untuk menyerang boss. Sigma Bot ikut bantu — makin tinggi level, makin banyak bot yang datang.</p>
+  </section>
+
   <section class="block" id="contact">
-    <div class="sec-head reveal"><span class="num">04</span><h2>Connect</h2></div>
+    <div class="sec-head reveal"><span class="num">05</span><h2>Connect</h2></div>
     <div class="links reveal">
       <a href="https://www.linkedin.com/in/rizkyr117h/" target="_blank" rel="noopener">LINKEDIN <span>/in/rizkyr117h ↗</span></a>
       <a href="https://www.instagram.com/rizkyr117h/" target="_blank" rel="noopener">INSTAGRAM <span>@rizkyr117h ↗</span></a>
@@ -547,6 +561,391 @@ function updateTransform() {
 addEventListener('scroll', updateTransform, { passive: true });
 addEventListener('resize', updateTransform);
 updateTransform();
+
+/* ===== BOSS RAID: game klik melawan boss, dibantu Sigma Bot ===== */
+const raid = (() => {
+  const cv = document.getElementById('duel'), c = cv.getContext('2d');
+  let W = 0, H = 0, S = 0, GY = 0, CX = 0, visible = false;
+  const DPR2 = Math.min(2, window.devicePixelRatio || 1);
+  function size() {
+    const r = cv.getBoundingClientRect();
+    W = cv.width = r.width * DPR2; H = cv.height = r.height * DPR2;
+    GY = H - 64 * DPR2; S = Math.min(GY * .38, W * .17); CX = W / 2;   // sisakan ruang panel pemain di bawah tanah
+  }
+  size(); addEventListener('resize', size);
+  new IntersectionObserver(e => { visible = e[0].isIntersecting; if (visible) size(); }).observe(cv);
+
+  /* ---------- kerangka & pose karakter ---------- */
+  const L = { thigh: .22, shin: .22, torso: .3, neck: .04, head: .065, upper: .16, fore: .15, sword: .5 };
+  // sudut dalam derajat: 0 = lurus ke bawah, positif = ke arah depan karakter
+  const POSE = {
+    guard:  { lean: 8,   crouch: .05, armN: [55, 60],   armF: [25, 75],   legN: [28, -18],  legF: [-24, -12], sword: 135 },
+    windup: { lean: -6,  crouch: .07, armN: [165, 15],  armF: [45, 60],   legN: [30, -25],  legF: [-28, -10], sword: 215 },
+    slash:  { lean: 28,  crouch: .14, armN: [80, 5],    armF: [-25, 40],  legN: [55, -55],  legF: [-50, 0],   sword: 70 },
+    hit:    { lean: -22, crouch: .04, armN: [35, 30],   armF: [-35, 25],  legN: [12, -6],   legF: [-38, -10], sword: 115 },
+    jump:   { lean: 4,   crouch: -.45, armN: [170, 10], armF: [125, 40],  legN: [75, -115], legF: [25, -100], sword: 215 },
+    dive:   { lean: 32,  crouch: -.1, armN: [85, 0],    armF: [-30, 30],  legN: [60, -90],  legF: [-10, -60], sword: 75 },
+    land:   { lean: 32,  crouch: .2,  armN: [62, 0],    armF: [-40, 30],  legN: [80, -110], legF: [-15, -115], sword: 55 },
+    power:  { lean: -4,  crouch: .1,  armN: [20, 20],   armF: [-20, 20],  legN: [35, -20],  legF: [-35, -20], sword: 160 },
+  };
+  const lerp = (a, b, k) => a + (b - a) * k;
+  const ease = k => k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+  const mix = (p, q, k) => {
+    const o = {};
+    for (const key in p) o[key] = Array.isArray(p[key]) ? p[key].map((v, i) => lerp(v, q[key][i], k)) : lerp(p[key], q[key], k);
+    return o;
+  };
+
+  // aktor: punya antrean gerakan {pose, x, d, hit}
+  function actor(o) { return Object.assign({ cur: POSE.guard, from: POSE.guard, to: POSE.guard, fromX: o.home, x: o.home, toX: o.home, t: 0, d: .3, queue: [], step: null, trail: [], alpha: 1, kb: 0, flash: 0 }, o); }
+  function play(a, steps) { a.queue = steps.slice(); a.step = null; nextStep(a); }
+  function nextStep(a) {
+    a.step = a.queue.shift() || null;
+    a.from = a.cur; a.fromX = a.x; a.t = 0;
+    if (a.step) { a.to = POSE[a.step.pose]; a.toX = a.step.x ?? a.x; a.d = a.step.d; }
+    else { a.to = POSE[a.idle || 'guard']; a.toX = a.home; a.d = .3; }
+  }
+  function update(a, dt) {
+    a.t += dt;
+    const k = ease(Math.min(1, a.t / a.d));
+    a.cur = mix(a.from, a.to, k); a.x = lerp(a.fromX, a.toX, k);
+    if (a.t >= a.d && a.step) { const st = a.step; nextStep(a); st.hit && st.hit(); }
+    a.kb *= .85; a.flash *= .85;
+  }
+  const busy = a => !!a.step;
+
+  function rig(a, t) {
+    const p = a.cur, fc = a.face, k = a.k, U = S * k, X = CX + (a.x + a.kb) * S;
+    const breathe = a.step ? 0 : Math.sin(t * .004 + a.home) * .012;
+    const dir = ang => { const r = ang * Math.PI / 180; return [Math.sin(r) * fc, Math.cos(r)]; };
+    const hip = [X, GY - (L.thigh + L.shin) * U + (p.crouch + breathe) * U];
+    const lr = p.lean * Math.PI / 180;
+    const sh = [hip[0] + Math.sin(lr) * fc * L.torso * U, hip[1] - Math.cos(lr) * L.torso * U];
+    const hd = [sh[0] + Math.sin(lr) * fc * (L.neck + L.head) * U, sh[1] - Math.cos(lr) * (L.neck + L.head) * U];
+    const limb = (o, [a1, a2], l1, l2) => {
+      const d1 = dir(a1), m = [o[0] + d1[0] * l1 * U, o[1] + d1[1] * l1 * U];
+      const d2 = dir(a1 + a2), e = [m[0] + d2[0] * l2 * U, m[1] + d2[1] * l2 * U];
+      return [o, m, e];
+    };
+    const armN = limb(sh, p.armN, L.upper, L.fore), armF = limb(sh, p.armF, L.upper, L.fore);
+    const legN = limb(hip, p.legN, L.thigh, L.shin), legF = limb(hip, p.legF, L.thigh, L.shin);
+    const hand = armN[2], sd = dir(p.sword);
+    const tip = [hand[0] + sd[0] * L.sword * U, hand[1] + sd[1] * L.sword * U];
+    return { hip, sh, hd, armN, armF, legN, legF, hand, tip, U };
+  }
+
+  /* ---------- menggambar ---------- */
+  const line = (pts, w) => { c.beginPath(); pts.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y)); c.lineWidth = w; c.stroke(); };
+
+  // aura sigma: lidah api bercahaya naik dari kaki, ikut berdenyut dengan bass
+  function aura(r, t, power, seed) {
+    const U = r.U, fy = GY, bx = r.hip[0];
+    c.save(); c.globalCompositeOperation = 'lighter';
+    const glow = c.createRadialGradient(bx, r.sh[1], 0, bx, r.sh[1], U * .9);
+    glow.addColorStop(0, `rgba(${AC},${.28 * power})`); glow.addColorStop(1, 'rgba(0,0,0,0)');
+    c.fillStyle = glow; c.beginPath(); c.arc(bx, r.sh[1], U * .9, 0, 7); c.fill();
+    for (let j = 0; j < 9; j++) {
+      const off = (j - 4) / 4, x0 = bx + off * U * .32;
+      const h = U * (.75 + .35 * Math.sin(t * .011 + j * 1.9 + seed) ** 2) * (1 - Math.abs(off) * .35) * (.8 + power * .4);
+      const sway = Math.sin(t * .008 + j + seed) * U * .06, w = U * .09;
+      const gr = c.createLinearGradient(0, fy, 0, fy - h);
+      gr.addColorStop(0, `rgba(${AC},${.55 * power})`); gr.addColorStop(.6, `rgba(${AC},${.18 * power})`); gr.addColorStop(1, 'rgba(255,255,255,0)');
+      c.fillStyle = gr; c.beginPath();
+      c.moveTo(x0 - w, fy);
+      c.quadraticCurveTo(x0 - w * .4 + sway, fy - h * .55, x0 + sway * 1.6, fy - h);
+      c.quadraticCurveTo(x0 + w * .4 + sway, fy - h * .55, x0 + w, fy);
+      c.fill();
+    }
+    c.restore();
+  }
+
+  function drawActor(a, r, t) {
+    const U = r.U, lw = U * .055, tw = U * .09;
+    c.save(); c.globalAlpha = a.alpha;
+    c.lineCap = c.lineJoin = 'round';
+    const rim = a.boss ? '255,59,59' : AC;
+    // garis luar bercahaya
+    c.save();
+    c.strokeStyle = c.fillStyle = `rgba(${rim},.9)`; c.shadowColor = `rgb(${rim})`; c.shadowBlur = 14 * DPR2;
+    const o = 4 * DPR2 * (a.boss ? 1.4 : 1);
+    if (a.boss) {   // jubah boss berkibar
+      c.beginPath(); c.moveTo(r.sh[0], r.sh[1]);
+      for (let i = 0; i <= 6; i++) c.lineTo(r.sh[0] - a.face * (U * .1 + i * U * .07), r.sh[1] + i * U * .1 + Math.sin(t * .006 + i) * U * .03);
+      c.lineTo(r.hip[0], r.hip[1]); c.fill();
+    }
+    [r.armF, r.legF, r.legN].forEach(l => line(l, lw + o));
+    line([r.hip, r.sh], tw + o); line(r.armN, lw + o);
+    c.beginPath(); c.arc(r.hd[0], r.hd[1], L.head * U + o / 2, 0, 7); c.fill();
+    c.restore();
+    // badan siluet
+    const body = a.flash > .05 ? `rgb(${Math.round(255 * a.flash)},${Math.round(255 * a.flash)},${Math.round(255 * a.flash)})` : '#000';
+    if (a.boss) {
+      c.fillStyle = '#0a0000'; c.beginPath(); c.moveTo(r.sh[0], r.sh[1]);
+      for (let i = 0; i <= 6; i++) c.lineTo(r.sh[0] - a.face * (U * .1 + i * U * .07), r.sh[1] + i * U * .1 + Math.sin(t * .006 + i) * U * .03);
+      c.lineTo(r.hip[0], r.hip[1]); c.fill();
+    }
+    c.strokeStyle = '#141414'; [r.armF, r.legF].forEach(l => line(l, lw));
+    c.strokeStyle = body; c.fillStyle = body;
+    line(r.legN, lw); line([r.hip, r.sh], tw); line(r.armN, lw);
+    c.beginPath(); c.arc(r.hd[0], r.hd[1], L.head * U, 0, 7); c.fill();
+    if (a.boss) {   // tanduk
+      [-1, 1].forEach(sd => {
+        c.beginPath();
+        c.moveTo(r.hd[0] + sd * U * .04, r.hd[1] - U * .04);
+        c.quadraticCurveTo(r.hd[0] + sd * U * .14, r.hd[1] - U * .1, r.hd[0] + sd * U * .12, r.hd[1] - U * .2);
+        c.quadraticCurveTo(r.hd[0] + sd * U * .08, r.hd[1] - U * .1, r.hd[0], r.hd[1] - U * .05);
+        c.fill();
+      });
+    } else {        // ikat kepala berkibar
+      const tail = [];
+      for (let i = 0; i <= 6; i++) tail.push([r.hd[0] - a.face * i * U * .05, r.hd[1] - U * .01 + Math.sin(t * .012 + i * .9 + a.home) * U * .015 * i]);
+      c.strokeStyle = a.bot ? '#fff' : `rgb(${AC})`; line(tail, U * .022);
+    }
+    // mata
+    c.fillStyle = a.boss ? '#ff2b2b' : a.bot ? '#fff' : `rgb(${AC})`;
+    c.shadowColor = c.fillStyle; c.shadowBlur = 8 * DPR2;
+    c.beginPath(); c.arc(r.hd[0] + a.face * U * .03, r.hd[1] - U * .005, U * .013, 0, 7); c.fill();
+    c.shadowBlur = 0;
+    // jejak & pedang
+    a.trail.unshift(r.tip.slice()); if (a.trail.length > 8) a.trail.pop();
+    for (let i = 1; i < a.trail.length; i++) {
+      c.strokeStyle = `rgba(${rim},${.5 * (1 - i / a.trail.length)})`;
+      line([a.trail[i - 1], a.trail[i]], U * .03 * (1 - i / a.trail.length));
+    }
+    c.strokeStyle = '#000'; line([r.hand, r.tip], U * .03);
+    c.strokeStyle = a.boss ? '#ff6b6b' : '#f4f4f4'; line([r.hand, r.tip], U * .014);
+    c.restore();
+  }
+
+  function backdrop(t, bass) {
+    const sky = c.createLinearGradient(0, 0, 0, GY);
+    sky.addColorStop(0, '#050505'); sky.addColorStop(1, `rgba(${AC2},.55)`);
+    c.fillStyle = sky; c.fillRect(0, 0, W, H);
+    const mr = Math.min(W, H) * (.22 + bass * .03), mx = CX + W * .14, my = GY - H * .38;
+    const mg = c.createRadialGradient(mx, my, mr * .2, mx, my, mr * 1.8);
+    mg.addColorStop(0, `rgba(${AC},.9)`); mg.addColorStop(.45, `rgba(${AC},.3)`); mg.addColorStop(1, 'rgba(0,0,0,0)');
+    c.fillStyle = mg; c.beginPath(); c.arc(mx, my, mr * 1.8, 0, 7); c.fill();
+    c.fillStyle = `rgba(${AC},.85)`; c.beginPath(); c.arc(mx, my, mr, 0, 7); c.fill();
+    c.fillStyle = 'rgba(0,0,0,.75)'; c.beginPath(); c.moveTo(0, GY);
+    for (let x = 0; x <= W; x += W / 40) c.lineTo(x, GY - H * (.1 + .07 * Math.sin(x / W * 9 + 1) + .04 * Math.sin(x / W * 23)));
+    c.lineTo(W, GY); c.fill();
+    c.fillStyle = '#000'; c.fillRect(0, GY, W, H - GY);
+    c.strokeStyle = `rgba(${AC},.6)`; c.lineWidth = 1.5 * DPR2; c.beginPath(); c.moveTo(0, GY); c.lineTo(W, GY); c.stroke();
+    for (let i = 0; i < 30; i++) {
+      const ex = (i * 97.3 + t * .02 * (1 + i % 3)) % W, ey = GY - ((i * 53.1 + t * .03 * (1 + i % 4)) % (H * .9));
+      c.fillStyle = `rgba(${AC},${.3 + .4 * Math.sin(t * .005 + i) ** 2})`; c.fillRect(ex, ey, 2 * DPR2, 2 * DPR2);
+    }
+  }
+
+  /* ---------- data game & progres (disimpan di browser pengunjung) ---------- */
+  const BOSS_NAMES = ['BETA OVERLORD', 'NORMIE KING', 'CRINGE TITAN', 'NPC EMPEROR', 'RIZZLESS DEMON', 'DOOMSCROLL HYDRA', 'MID WARLORD', 'AURA THIEF'];
+  const KEY = 'sigma-raid-v1';
+  let save = { lvl: 1, xp: 0, boss: 1 };
+  try { save = Object.assign(save, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) {}
+  const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(save)); } catch (e) {} };
+
+  const clickDmg = () => Math.round(6 * Math.pow(1.17, save.lvl - 1));
+  const botDmg = () => Math.max(1, Math.round(clickDmg() * .55));
+  const xpNeed = () => Math.round(40 * Math.pow(1.28, save.lvl - 1));
+  const botCount = () => Math.min(4, 1 + Math.floor((save.lvl - 1) / 4));
+  const bossMaxHp = b => Math.round(120 * Math.pow(1.38, b - 1));
+  const bossName = b => BOSS_NAMES[(b - 1) % BOSS_NAMES.length];
+
+  const hero = actor({ name: 'RIZKY', home: -1.35, face: 1, k: 1 });
+  const BOT_HOMES = [-2.15, -.7, -2.65, -1.05];
+  let bots = [];
+  function syncBots() {
+    while (bots.length < botCount()) {
+      const i = bots.length, b = actor({ home: BOT_HOMES[i], face: 1, k: .78, bot: true, cd: 1 + i * .5, seed: i * 2.3 });
+      b.x = b.fromX = b.toX = -3.6; bots.push(b);   // masuk dari kiri
+      play(b, [{ pose: 'guard', x: b.home, d: .8 }]);
+    }
+  }
+  syncBots();
+  const boss = actor({ home: 1.55, face: -1, k: 1.75, boss: true, hp: bossMaxHp(save.boss), cd: 3, dead: 0 });
+
+  const nums = [], sparks = [], rings = [];
+  let banner = { text: `BOSS LV ${save.boss} — ${bossName(save.boss)}`, t: 2 }, shake = 0, flash = 0, seenBeat = 0, hint = true, saveT = 0;
+
+  function bossChest() { const r = rig(boss, performance.now()); return [r.sh[0], (r.sh[1] + r.hip[1]) / 2]; }
+  function damage(n, crit, at) {
+    if (boss.dead) return;
+    boss.hp -= n; boss.kb = Math.min(.25, boss.kb + .05 + (crit ? .12 : 0)); boss.flash = crit ? 1 : .6;
+    const [x, y] = at || bossChest();
+    nums.push({ x: x + (Math.random() - .5) * S * .3, y, txt: (crit ? 'CRIT ' : '') + n, crit, life: 1 });
+    for (let i = 0; i < (crit ? 22 : 10); i++) {
+      const a = Math.random() * Math.PI * 2, sp = (2 + Math.random() * (crit ? 10 : 6)) * DPR2;
+      sparks.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 2 * DPR2, life: 1 });
+    }
+    if (crit) { rings.push({ x, y, r: S * .05, life: 1 }); shake = 7 * DPR2; flash = .18; }
+    gainXp(n * .5);
+    if (boss.hp <= 0) killBoss();
+  }
+  function gainXp(n) {
+    save.xp += n;
+    while (save.xp >= xpNeed()) {
+      save.xp -= xpNeed(); save.lvl++;
+      const before = bots.length; syncBots();
+      banner = { text: bots.length > before ? `LV ${save.lvl} — SIGMA BOT JOINED!` : `LEVEL UP! LV ${save.lvl}`, t: 1.6 };
+      const r = rig(hero, performance.now()); rings.push({ x: r.hip[0], y: r.sh[1], r: S * .1, life: 1, big: true });
+      play(hero, [{ pose: 'power', d: .25 }, { pose: 'power', d: .35 }]);
+      persist();
+    }
+  }
+  function killBoss() {
+    boss.dead = 1; boss.hp = 0; boss.idle = 'land';
+    banner = { text: 'BOSS DEFEATED!', t: 1.8 }; shake = 12 * DPR2; flash = .4;
+    gainXp(bossMaxHp(save.boss) * .35);
+    play(boss, [{ pose: 'hit', x: boss.home + .3, d: .25 }, { pose: 'land', d: .5 }]);
+  }
+  function spawnBoss() {
+    save.boss++; persist();
+    Object.assign(boss, { idle: 'guard', hp: bossMaxHp(save.boss), dead: 0, alpha: 1, cd: 3, x: 4, fromX: 4, toX: 4, cur: POSE.guard });
+    play(boss, [{ pose: 'guard', x: boss.home, d: .7 }]);
+    banner = { text: `BOSS LV ${save.boss} — ${bossName(save.boss)}`, t: 2 };
+  }
+
+  /* ---------- serangan ---------- */
+  function heroAttack(at) {
+    hint = false;
+    const crit = Math.random() < .12;
+    play(hero, [{ pose: 'windup', x: hero.home + .05, d: .05 }, { pose: 'slash', x: boss.x - 1.05, d: .08 }, { pose: 'guard', x: hero.home, d: .22 }]);
+    damage(crit ? clickDmg() * 3 : clickDmg(), crit, at);
+  }
+  function botAttack(b) {
+    const tx = boss.x - .95 - Math.random() * .2;
+    play(b, [
+      { pose: 'jump', x: (b.x + tx) / 2, d: .24 },
+      { pose: 'dive', x: tx, d: .14, hit: () => damage(Math.random() < .08 ? botDmg() * 3 : botDmg(), false) },
+      { pose: 'land', d: .16 },
+      { pose: 'guard', x: b.home, d: .32 },
+    ]);
+    b.cd = 1.8 + Math.random() * .8;
+  }
+  function bossAttack() {
+    play(boss, [
+      { pose: 'windup', d: .45 },
+      { pose: 'slash', x: boss.home - .35, d: .12, hit: () => { shake = 9 * DPR2; rings.push({ x: CX + (boss.home - 1.4) * S, y: GY, r: S * .1, life: 1, ground: true }); [hero, ...bots].forEach(a => { if (!busy(a)) a.kb = -.12; }); } },
+      { pose: 'guard', x: boss.home, d: .45 },
+    ]);
+    boss.cd = 2.8 + Math.random() * 1.5;
+  }
+
+  cv.addEventListener('pointerdown', e => {
+    const r = cv.getBoundingClientRect();
+    const x = (e.clientX - r.left) * DPR2, y = (e.clientY - r.top) * DPR2;
+    const br = rig(boss, performance.now());
+    const onBoss = Math.abs(x - br.hip[0]) < S * .6 && y > br.hd[1] - S * .3 && y < GY;
+    heroAttack(onBoss ? [x, y] : null);
+  });
+
+  /* ---------- HUD ---------- */
+  function bar(x, y, w, h, v, col) {
+    c.fillStyle = '#111'; c.fillRect(x, y, w, h);
+    c.fillStyle = col; c.fillRect(x, y, w * Math.max(0, Math.min(1, v)), h);
+    c.strokeStyle = '#333'; c.lineWidth = 1; c.strokeRect(x, y, w, h);
+  }
+  function hud(t) {
+    const pad = 16 * DPR2, mono = n => `700 ${n * DPR2}px "JetBrains Mono", monospace`;
+    // HP boss
+    const bw = W - pad * 2;
+    c.font = mono(11); c.textBaseline = 'bottom'; c.textAlign = 'left'; c.fillStyle = '#ff6b6b';
+    c.fillText(`☠ ${bossName(save.boss)}  ·  LV ${save.boss}`, pad, pad + 12 * DPR2);
+    c.textAlign = 'right'; c.fillStyle = '#ddd';
+    c.fillText(`${Math.max(0, Math.ceil(boss.hp)).toLocaleString('id-ID')} / ${bossMaxHp(save.boss).toLocaleString('id-ID')}`, W - pad, pad + 12 * DPR2);
+    bar(pad, pad + 16 * DPR2, bw, 10 * DPR2, boss.hp / bossMaxHp(save.boss), '#d62828');
+    // panel pemain
+    const py = GY + 24 * DPR2, pw = Math.min(W * .45, 260 * DPR2);
+    c.textAlign = 'left'; c.fillStyle = `rgb(${AC})`; c.font = mono(12);
+    c.fillText(`RIZKY  LV ${save.lvl}`, pad, py);
+    bar(pad, py + 4 * DPR2, pw, 6 * DPR2, save.xp / xpNeed(), `rgb(${AC})`);
+    c.font = mono(10); c.fillStyle = '#aaa';
+    c.fillText(`DMG ${clickDmg()}  ·  SIGMA BOT ×${bots.length} (DMG ${botDmg()})`, pad, py + 26 * DPR2);
+    // petunjuk awal
+    if (hint) {
+      c.textAlign = 'center'; c.textBaseline = 'middle'; c.font = mono(13);
+      c.fillStyle = `rgba(255,255,255,${.5 + .5 * Math.sin(t * .006)})`;
+      c.fillText('▶ KLIK / TAP UNTUK MENYERANG ◀', W / 2, H * .3);
+    }
+    if (banner.t > 0) {
+      const a = Math.min(1, banner.t * 2);
+      c.font = `${Math.min(W * .065, 52 * DPR2)}px Anton, sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.lineJoin = 'round'; c.lineWidth = 6 * DPR2; c.strokeStyle = `rgba(0,0,0,${a * .85})`;
+      c.strokeText(banner.text, W / 2, H * .42);
+      c.fillStyle = `rgba(255,255,255,${a})`; c.shadowColor = `rgb(${AC})`; c.shadowBlur = 24 * DPR2;
+      c.fillText(banner.text, W / 2, H * .42); c.shadowBlur = 0;
+    }
+  }
+
+  /* ---------- loop ---------- */
+  let last = performance.now();
+  function frame(t) {
+    requestAnimationFrame(frame);
+    if (!visible || !W) { last = t; return; }
+    const dt = Math.min(.05, (t - last) / 1000); last = t;
+    const live = analyser && !audio.paused;
+    let bass = 0;
+    if (live) { for (let i = 0; i < 8; i++) bass += freq[i]; bass /= 8 * 255; }
+    const beatNow = lastBeat !== seenBeat; if (beatNow) seenBeat = lastBeat;
+
+    // AI: bot menyerang sendiri (lebih sering pas beat lagu), boss sesekali membanting
+    bots.forEach(b => {
+      b.cd -= dt;
+      if (!busy(b) && !boss.dead && (b.cd <= 0 || (beatNow && b.cd < 1.2 && Math.random() < .5))) botAttack(b);
+    });
+    if (!boss.dead) { boss.cd -= dt; if (boss.cd <= 0 && !busy(boss)) bossAttack(); }
+    else { boss.dead += dt; if (boss.dead > 1.2) boss.alpha = Math.max(0, 1 - (boss.dead - 1.2) * 1.5); if (boss.dead > 2.2) spawnBoss(); }
+    [hero, ...bots, boss].forEach(a => update(a, dt));
+    saveT += dt; if (saveT > 4) { saveT = 0; persist(); }
+
+    c.save();
+    if (shake > .1) { c.translate((Math.random() - .5) * shake, (Math.random() - .5) * shake); shake *= .86; }
+    backdrop(t, bass);
+    const rs = new Map([hero, ...bots, boss].map(a => [a, rig(a, t)]));
+    rs.forEach((r, a) => { c.fillStyle = 'rgba(0,0,0,.6)'; c.beginPath(); c.ellipse(r.hip[0], GY + 4 * DPR2, r.U * .25, r.U * .04, 0, 0, 7); c.fill(); });
+    // aura sigma: bot selalu menyala, hero ikut menyala saat naik level / power up
+    bots.forEach(b => aura(rs.get(b), t, .75 + bass * .6, b.seed));
+    if (hero.step && hero.step.pose === 'power') aura(rs.get(hero), t, 1.3, 9);
+    drawActor(boss, rs.get(boss), t);
+    bots.forEach(b => drawActor(b, rs.get(b), t));
+    drawActor(hero, rs.get(hero), t);
+    // label bot
+    c.font = `700 ${8 * DPR2}px "JetBrains Mono", monospace`; c.textAlign = 'center'; c.textBaseline = 'bottom';
+    if (W > 640 * DPR2) bots.forEach(b => { const r = rs.get(b); c.fillStyle = `rgba(${AC},.9)`; c.fillText('SIGMA BOT', r.hd[0], r.hd[1] - r.U * .1); });
+
+    c.globalCompositeOperation = 'lighter';
+    for (let i = rings.length - 1; i >= 0; i--) {
+      const g2 = rings[i]; g2.r += S * (g2.big ? .06 : .045); g2.life -= .035;
+      if (g2.life <= 0) { rings.splice(i, 1); continue; }
+      c.strokeStyle = g2.ground ? `rgba(255,80,80,${g2.life})` : `rgba(${AC},${g2.life})`; c.lineWidth = 3 * g2.life * DPR2;
+      c.beginPath();
+      g2.ground ? c.ellipse(g2.x, g2.y, g2.r * 1.6, g2.r * .25, 0, 0, 7) : c.arc(g2.x, g2.y, g2.r, 0, 7);
+      c.stroke();
+    }
+    for (let i = sparks.length - 1; i >= 0; i--) {
+      const p = sparks[i]; p.x += p.vx; p.y += p.vy; p.vy += .35 * DPR2; p.vx *= .97; p.life -= .035;
+      if (p.life <= 0) { sparks.splice(i, 1); continue; }
+      c.strokeStyle = `rgba(255,${200 + Math.random() * 55 | 0},150,${p.life})`; c.lineWidth = 2 * DPR2;
+      c.beginPath(); c.moveTo(p.x, p.y); c.lineTo(p.x - p.vx * 1.5, p.y - p.vy * 1.5); c.stroke();
+    }
+    if (flash > .01) { c.fillStyle = `rgba(255,255,255,${flash})`; c.fillRect(0, 0, W, H); flash *= .8; }
+    c.globalCompositeOperation = 'source-over';
+    // angka damage melayang
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    for (let i = nums.length - 1; i >= 0; i--) {
+      const n = nums[i]; n.y -= 1.2 * DPR2; n.life -= .022;
+      if (n.life <= 0) { nums.splice(i, 1); continue; }
+      c.font = `${(n.crit ? 26 : 17) * DPR2}px Anton, sans-serif`;
+      c.lineWidth = 4 * DPR2; c.strokeStyle = `rgba(0,0,0,${n.life})`; c.strokeText(n.txt, n.x, n.y);
+      c.fillStyle = n.crit ? `rgba(255,214,10,${n.life})` : `rgba(255,255,255,${n.life})`; c.fillText(n.txt, n.x, n.y);
+    }
+    c.restore();
+    banner.t -= dt;
+    hud(t);
+  }
+  requestAnimationFrame(frame);
+  return { hero, bots, boss, save, attack: () => heroAttack(null) };
+})();
 
 /* ===== JAM DIGITAL + TANGGAL ===== */
 const clockEl = document.getElementById('clock'), dateEl = document.getElementById('date');
